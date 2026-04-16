@@ -77,6 +77,39 @@ return {
     end,
   },
   {
+    "seblyng/roslyn.nvim",
+    ft = { "cs", "razor", "cshtml" },
+    dependencies = {
+      "neovim/nvim-lspconfig",
+      "williamboman/mason.nvim",
+      "tris203/rzls.nvim",
+    },
+    init = function()
+      vim.filetype.add {
+        extension = {
+          razor = "razor",
+          cshtml = "razor",
+        },
+      }
+    end,
+    config = function()
+      require("configs.dotnet").setup_roslyn()
+    end,
+  },
+  {
+    "GustavEikaas/easy-dotnet.nvim",
+    cmd = { "Dotnet" },
+    ft = { "cs", "csproj", "fsproj", "sln", "slnx", "razor", "cshtml", "props" },
+    dependencies = {
+      "nvim-lua/plenary.nvim",
+      "nvim-telescope/telescope.nvim",
+      "mfussenegger/nvim-dap",
+    },
+    config = function()
+      require("configs.dotnet").setup_easy_dotnet()
+    end,
+  },
+  {
     "williamboman/mason.nvim",
     cmd = { "Mason", "MasonInstall", "MasonUpdate" },
     opts = require "configs.mason",
@@ -131,6 +164,13 @@ return {
         { path = "${3rd}/luv/library", words = { "vim%.uv" } },
       },
     },
+  },
+  {
+    "hrsh7th/nvim-cmp",
+    dependencies = { "GustavEikaas/easy-dotnet.nvim" },
+    opts = function(_, opts)
+      return require("configs.dotnet").extend_cmp(opts)
+    end,
   },
   {
     "ray-x/guihua.lua",

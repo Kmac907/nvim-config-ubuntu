@@ -8,16 +8,14 @@ local paths = require "configs.paths"
 require("mason").setup(mason_opts)
 
 mason_lspconfig.setup {
-  ensure_installed = paths.python_venv_support()
-      and {
-        "lua_ls",
-        "gopls",
-        "basedpyright",
-      }
-    or {
-      "lua_ls",
-      "gopls",
-    },
+  ensure_installed = paths.python_venv_support() and {
+    "lua_ls",
+    "gopls",
+    "basedpyright",
+  } or {
+    "lua_ls",
+    "gopls",
+  },
   automatic_enable = false,
   automatic_installation = true,
 }
@@ -47,19 +45,19 @@ local on_init = function(client, _)
   nvchad_lsp.on_init(client, _)
 end
 
-local lua_ls_cmd = paths.first(
-  paths.mason_path("lua-language-server", "lua-language-server"),
-  paths.executable "lua-language-server"
-)
+local lua_ls_cmd =
+  paths.first(paths.mason_path("lua-language-server", "lua-language-server"), paths.executable "lua-language-server")
 
-local gopls_cmd = paths.first(
-  paths.mason_path("gopls", "gopls"),
-  paths.executable "gopls"
-)
+local gopls_cmd = paths.first(paths.mason_path("gopls", "gopls"), paths.executable "gopls")
 
 local basedpyright_cmd = paths.first(
   paths.mason_path("basedpyright", "venv/bin/basedpyright-langserver"),
   paths.executable "basedpyright-langserver"
+)
+
+local html_cmd = paths.first(
+  paths.mason_path("html-lsp", "node_modules/vscode-langservers-extracted/bin/vscode-html-language-server"),
+  paths.executable "vscode-html-language-server"
 )
 
 local function resolve_root(markers, fallback_to_dir)
@@ -135,6 +133,10 @@ local server_configs = {
       },
     },
   },
+  html = {
+    cmd = html_cmd and { html_cmd, "--stdio" } or nil,
+    filetypes = { "html" },
+  },
 }
 
 if basedpyright_cmd then
@@ -167,4 +169,4 @@ for server, config in pairs(server_configs) do
   vim.lsp.enable(server)
 end
 
--- read :h vim.lsp.config for changing options of lsp servers 
+-- read :h vim.lsp.config for changing options of lsp servers

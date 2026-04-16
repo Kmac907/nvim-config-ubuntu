@@ -5,13 +5,23 @@ M.ui = {
   border = "rounded",
 }
 
+M.registries = {
+  "github:mason-org/mason-registry",
+  "github:Crashdummyy/mason-registry",
+}
+
 M.ensure_installed = {
   "lua-language-server",
   "stylua",
   "gopls",
   "goimports",
   "golangci-lint",
+  "html-lsp",
   "delve",
+  "roslyn-unstable",
+  "rzls",
+  "csharpier",
+  "netcoredbg",
   "rust-analyzer",
   "codelldb",
 }

@@ -15,16 +15,10 @@ local options = {
 
   formatters = {
     goimports = {
-      command = paths.first(
-        paths.mason_path("goimports", "goimports"),
-        paths.executable "goimports"
-      ),
+      command = paths.first(paths.mason_path("goimports", "goimports"), paths.executable "goimports"),
     },
     stylua = {
-      command = paths.first(
-        paths.mason_path("stylua", "stylua"),
-        paths.executable "stylua"
-      ),
+      command = paths.first(paths.mason_path("stylua", "stylua"), paths.executable "stylua"),
     },
   },
 }
