@@ -62,6 +62,21 @@ local basedpyright_cmd = paths.first(
   paths.executable "basedpyright-langserver"
 )
 
+local function resolve_root(markers, fallback_to_dir)
+  local matcher = util.root_pattern(unpack(markers))
+
+  return function(bufnr, on_dir)
+    local fname = vim.api.nvim_buf_get_name(bufnr)
+    local root = matcher(fname)
+
+    if not root and fallback_to_dir then
+      root = vim.fs.dirname(fname)
+    end
+
+    on_dir(root)
+  end
+end
+
 vim.api.nvim_create_autocmd("LspAttach", {
   group = vim.api.nvim_create_augroup("UserLspConfig", { clear = true }),
   callback = function(args)
@@ -96,7 +111,7 @@ local server_configs = {
   },
   gopls = {
     cmd = gopls_cmd and { gopls_cmd } or nil,
-    root_dir = util.root_pattern("go.work", "go.mod", ".git"),
+    root_dir = resolve_root({ "go.work", "go.mod", ".git" }, false),
     settings = {
       gopls = {
         analyses = {
@@ -125,7 +140,7 @@ local server_configs = {
 if basedpyright_cmd then
   server_configs.basedpyright = {
     cmd = { basedpyright_cmd, "--stdio" },
-    root_dir = util.root_pattern("pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", ".git"),
+    root_dir = resolve_root({ "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", ".git" }, true),
     settings = {
       basedpyright = {
         analysis = {

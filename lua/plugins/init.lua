@@ -14,6 +14,11 @@ return {
         highlight = "IblScopeChar",
         show_start = true,
         show_end = true,
+        exclude = {
+          -- `ibl` scope follows Treesitter lexical scope, not visual indent blocks.
+          -- That makes the highlighted guide misleading in Python and noisy in Lua.
+          language = { "python", "lua" },
+        },
       },
       exclude = {
         filetypes = {
@@ -66,7 +71,7 @@ return {
   },
   {
     "neovim/nvim-lspconfig",
-    event = { "BufReadPre", "BufNewFile" },
+    event = "User FilePost",
     config = function()
       require "configs.lspconfig"
     end,
