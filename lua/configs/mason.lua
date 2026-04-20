@@ -13,6 +13,10 @@ M.registries = {
 M.ensure_installed = {
   "lua-language-server",
   "stylua",
+  "marksman",
+  "css-lsp",
+  "tailwindcss-language-server",
+  "prettier",
   "gopls",
   "goimports",
   "golangci-lint",

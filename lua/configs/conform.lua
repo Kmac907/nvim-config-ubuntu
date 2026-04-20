@@ -6,6 +6,11 @@ local options = {
     go = { "goimports", "gofmt" },
     rust = { "rustfmt" },
     python = { "ruff_format" },
+    css = { "prettier" },
+    scss = { "prettier" },
+    less = { "prettier" },
+    html = { "prettier" },
+    markdown = { "prettier" },
   },
 
   format_on_save = {
@@ -19,6 +24,9 @@ local options = {
     },
     stylua = {
       command = paths.first(paths.mason_path("stylua", "stylua"), paths.executable "stylua"),
+    },
+    prettier = {
+      command = paths.first(paths.mason_bin "prettier", paths.executable "prettier"),
     },
   },
 }

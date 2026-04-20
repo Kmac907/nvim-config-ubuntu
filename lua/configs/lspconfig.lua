@@ -60,6 +60,18 @@ local html_cmd = paths.first(
   paths.executable "vscode-html-language-server"
 )
 
+local css_cmd = paths.first(
+  paths.mason_path("css-lsp", "node_modules/vscode-langservers-extracted/bin/vscode-css-language-server"),
+  paths.executable "vscode-css-language-server"
+)
+
+local tailwindcss_cmd = paths.first(
+  paths.mason_path("tailwindcss-language-server", "node_modules/@tailwindcss/language-server/bin/tailwindcss-language-server"),
+  paths.executable "tailwindcss-language-server"
+)
+
+local marksman_cmd = paths.executable "marksman"
+
 local function resolve_root(markers, fallback_to_dir)
   local matcher = util.root_pattern(unpack(markers))
 
@@ -137,6 +149,65 @@ local server_configs = {
     cmd = html_cmd and { html_cmd, "--stdio" } or nil,
     filetypes = { "html" },
   },
+  cssls = {
+    cmd = css_cmd and { css_cmd, "--stdio" } or nil,
+    filetypes = { "css", "scss", "less" },
+    root_dir = resolve_root({ "package.json", ".git" }, true),
+    settings = {
+      css = {
+        lint = {
+          unknownAtRules = "ignore",
+        },
+      },
+      scss = {
+        lint = {
+          unknownAtRules = "ignore",
+        },
+      },
+      less = {
+        lint = {
+          unknownAtRules = "ignore",
+        },
+      },
+    },
+  },
+  tailwindcss = {
+    cmd = tailwindcss_cmd and { tailwindcss_cmd, "--stdio" } or nil,
+    filetypes = {
+      "css",
+      "scss",
+      "sass",
+      "html",
+      "razor",
+      "javascriptreact",
+      "typescriptreact",
+    },
+    root_dir = resolve_root({
+      "tailwind.config.js",
+      "tailwind.config.cjs",
+      "tailwind.config.mjs",
+      "tailwind.config.ts",
+      "postcss.config.js",
+      "postcss.config.cjs",
+      "postcss.config.mjs",
+      "postcss.config.ts",
+      "package.json",
+      ".git",
+    }, true),
+    settings = {
+      tailwindCSS = {
+        includeLanguages = {
+          razor = "html",
+          cshtml = "html",
+        },
+      },
+    },
+  },
+  marksman = {
+    cmd = marksman_cmd and { marksman_cmd, "server" } or nil,
+    filetypes = { "markdown" },
+    root_dir = resolve_root({ ".marksman.toml", ".git" }, true),
+  },
 }
 
 if basedpyright_cmd then
@@ -163,10 +234,25 @@ local base_config = {
   on_init = on_init,
 }
 
+local function attach_servers_to_open_buffers()
+  vim.schedule(function()
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].filetype ~= "" then
+        pcall(vim.api.nvim_exec_autocmds, "FileType", {
+          buffer = bufnr,
+          modeline = false,
+        })
+      end
+    end
+  end)
+end
+
 vim.lsp.config("*", base_config)
 for server, config in pairs(server_configs) do
   vim.lsp.config(server, config)
   vim.lsp.enable(server)
 end
+
+attach_servers_to_open_buffers()
 
 -- read :h vim.lsp.config for changing options of lsp servers

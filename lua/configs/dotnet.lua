@@ -71,6 +71,8 @@ local function lsp_capabilities()
   return capabilities
 end
 
+local setup_rzls
+
 local function on_attach(client, bufnr)
   local nvchad_lsp = require "nvchad.configs.lspconfig"
   nvchad_lsp.on_attach(client, bufnr)
@@ -313,7 +315,7 @@ local function active_dotnet_root(bufnr)
   return vim.fs.dirname(vim.fs.normalize(path))
 end
 
-local function setup_rzls()
+setup_rzls = function()
   local ok_rzls, rzls = pcall(require, "rzls")
   if not ok_rzls then
     return

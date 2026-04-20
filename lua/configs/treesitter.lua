@@ -8,6 +8,7 @@ return {
     "gowork",
     "gosum",
     "c_sharp",
+    "css",
     "html",
     "rust",
     "python",
