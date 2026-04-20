@@ -636,6 +636,7 @@ local function render_easy_dotnet_terminal_output(state)
   state.rendered_buf = rendered
 
   if state.win and vim.api.nvim_win_is_valid(state.win) then
+    require("easy-dotnet.terminal.header").cleanup_header()
     vim.api.nvim_win_set_buf(state.win, rendered)
     vim.api.nvim_win_set_cursor(state.win, { 1, 0 })
     vim.fn.win_execute(state.win, "normal! zt")
@@ -677,8 +678,7 @@ local function override_easy_dotnet_terminal()
       vim.api.nvim_win_set_buf(state.win, state.rendered_buf)
       vim.api.nvim_win_set_cursor(state.win, { 1, 0 })
       vim.fn.win_execute(state.win, "normal! zt")
-      header.create_header_win()
-      header.update_header(state.last_status, state.last_exit_code)
+      header.cleanup_header()
       vim.cmd "redraw!"
       return
     end
