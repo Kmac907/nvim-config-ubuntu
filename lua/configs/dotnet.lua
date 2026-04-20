@@ -743,6 +743,49 @@ local function override_easy_dotnet_root_dir()
   end
 end
 
+local function override_easy_dotnet_roslyn_root_dir()
+  local config = vim.lsp.config.roslyn
+  if not config then
+    return
+  end
+
+  config.root_dir = function(bufnr, on_dir)
+    local path = vim.api.nvim_buf_get_name(bufnr)
+    if path == "" then
+      on_dir(vim.fs.normalize(vim.fn.getcwd()))
+      return
+    end
+
+    local selected_solution = nil
+    local ok, current_solution = pcall(require, "easy-dotnet.current_solution")
+    if ok then
+      selected_solution = current_solution.try_get_selected_solution()
+    end
+
+    local solution = nearest_solution(path, selected_solution)
+    if ok then
+      if solution and solution ~= selected_solution then
+        pcall(current_solution.set_solution, solution)
+      elseif not solution and selected_solution then
+        pcall(current_solution.clear_selected_solution)
+      end
+    end
+
+    if solution then
+      on_dir(vim.fs.dirname(solution))
+      return
+    end
+
+    local project = nearest_project(path)
+    if project then
+      on_dir(vim.fs.dirname(project))
+      return
+    end
+
+    on_dir(vim.fs.dirname(vim.fs.normalize(path)))
+  end
+end
+
 local function terminal_output_lines(bufnr)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return {}
@@ -1096,6 +1139,7 @@ function M.setup_easy_dotnet()
   override_easy_dotnet_diagnostics()
   override_easy_dotnet_secrets()
   override_easy_dotnet_terminal()
+  override_easy_dotnet_roslyn_root_dir()
   override_easy_dotnet_roslyn_filetypes()
   override_easy_dotnet_roslyn_on_exit()
   disable_aftershave_semantic_tokens()
