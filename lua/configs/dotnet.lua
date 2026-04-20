@@ -491,132 +491,6 @@ local function override_easy_dotnet_picker_defaults()
   end
 end
 
-local function terminal_output_line(bufnr)
-  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
-    return nil
-  end
-
-  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  for index = 1, #lines do
-    local line = lines[index]
-    if line ~= "" and not line:match "^%[Process exited %d+%]$" then
-      return index
-    end
-  end
-
-  return nil
-end
-
-local function focus_terminal_output(winid, bufnr)
-  if not winid or not vim.api.nvim_win_is_valid(winid) then
-    return
-  end
-
-  local line = terminal_output_line(bufnr)
-  if not line then
-    return
-  end
-
-  vim.api.nvim_set_current_win(winid)
-  vim.api.nvim_win_set_cursor(winid, { line, 0 })
-  vim.fn.winrestview {
-    lnum = line,
-    col = 0,
-    curswant = 0,
-    topline = line,
-  }
-  vim.cmd "redraw!"
-end
-
-local function leave_terminal_mode(winid)
-  if not winid or not vim.api.nvim_win_is_valid(winid) then
-    return
-  end
-
-  vim.api.nvim_set_current_win(winid)
-  if vim.api.nvim_get_mode().mode:sub(1, 1) == "t" then
-    vim.api.nvim_input(vim.keycode "<C-\\><C-n>")
-  end
-end
-
-local function reveal_terminal_output(winid, bufnr)
-  if not winid or not vim.api.nvim_win_is_valid(winid) then
-    return
-  end
-
-  vim.api.nvim_set_current_win(winid)
-  leave_terminal_mode(winid)
-  vim.defer_fn(function()
-    focus_terminal_output(winid, bufnr)
-    vim.defer_fn(function()
-      if winid and vim.api.nvim_win_is_valid(winid) then
-        vim.api.nvim_set_current_win(winid)
-        vim.cmd "redraw!"
-      end
-    end, 10)
-  end, 20)
-end
-
-local function override_easy_dotnet_terminal()
-  local ok_terminal, terminal = pcall(require, "easy-dotnet.terminal")
-  if not ok_terminal or terminal._user_output_wrapped then
-    return
-  end
-
-  terminal._user_output_wrapped = true
-
-  local original_show = terminal.show
-  terminal.show = function()
-    local had_window = terminal.state.win and vim.api.nvim_win_is_valid(terminal.state.win)
-    original_show()
-
-    if terminal.state.buf and vim.api.nvim_buf_is_valid(terminal.state.buf) then
-      vim.b[terminal.state.buf].easy_dotnet_terminal = true
-    end
-
-    if terminal.state.win and vim.api.nvim_win_is_valid(terminal.state.win) and not had_window then
-      vim.api.nvim_win_set_height(terminal.state.win, math.max(10, vim.api.nvim_win_get_height(terminal.state.win)))
-    end
-
-    if terminal.state.last_status == "finished" then
-      reveal_terminal_output(terminal.state.win, terminal.state.buf)
-    end
-  end
-
-  vim.api.nvim_create_autocmd("TermClose", {
-    group = vim.api.nvim_create_augroup("UserEasyDotnetTerminal", { clear = true }),
-    callback = function(args)
-      local state = terminal.state
-      if args.buf ~= state.buf then
-        return
-      end
-
-      vim.schedule(function()
-        reveal_terminal_output(state.win, state.buf)
-      end)
-    end,
-  })
-
-  vim.api.nvim_create_autocmd({ "TermEnter", "BufWinEnter" }, {
-    group = vim.api.nvim_create_augroup("UserEasyDotnetTerminalMode", { clear = true }),
-    callback = function(args)
-      local state = terminal.state
-      if args.buf ~= state.buf then
-        return
-      end
-
-      vim.schedule(function()
-        if state.win and vim.api.nvim_win_is_valid(state.win) then
-          leave_terminal_mode(state.win)
-          if state.last_status == "finished" then
-            reveal_terminal_output(state.win, state.buf)
-          end
-        end
-      end)
-    end,
-  })
-end
-
 local function override_easy_dotnet_secrets()
   local ok_secrets, secrets = pcall(require, "easy-dotnet.secrets")
   if not ok_secrets or secrets._user_recursive_wrapped then
@@ -763,9 +637,9 @@ function M.setup_easy_dotnet()
 
   require("easy-dotnet").setup {
     picker = "telescope",
-    managed_terminal = {
-      auto_hide = false,
-      auto_hide_delay = 0,
+    external_terminal = {
+      command = "x-terminal-emulator",
+      args = { "-e" },
     },
     lsp = {
       enabled = true,
@@ -794,7 +668,6 @@ function M.setup_easy_dotnet()
   override_easy_dotnet_root_dir()
   override_easy_dotnet_picker_defaults()
   override_easy_dotnet_diagnostics()
-  override_easy_dotnet_terminal()
   override_easy_dotnet_secrets()
   mark_roslyn_initialized()
   setup_rzls()
