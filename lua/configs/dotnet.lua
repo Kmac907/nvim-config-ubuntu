@@ -793,6 +793,28 @@ local function override_easy_dotnet_roslyn_filetypes()
   config.filetypes = { "cs", "razor", "cshtml" }
 end
 
+local function disable_aftershave_semantic_tokens()
+  local group = vim.api.nvim_create_augroup("UserDotnetAftershaveSemanticTokens", { clear = true })
+
+  vim.api.nvim_create_autocmd("LspAttach", {
+    group = group,
+    callback = function(args)
+      local client_id = args.data and args.data.client_id
+      if not client_id then
+        return
+      end
+
+      local client = vim.lsp.get_client_by_id(client_id)
+      if not client or client.name ~= "aftershave" then
+        return
+      end
+
+      client.server_capabilities.semanticTokensProvider = nil
+      pcall(vim.lsp.semantic_tokens.stop, args.buf, client.id)
+    end,
+  })
+end
+
 local function create_roslyn_commands()
   if vim.g.user_dotnet_roslyn_command_created then
     return
@@ -944,6 +966,7 @@ function M.setup_easy_dotnet()
   override_easy_dotnet_secrets()
   override_easy_dotnet_terminal()
   override_easy_dotnet_roslyn_filetypes()
+  disable_aftershave_semantic_tokens()
   create_roslyn_commands()
   mark_roslyn_initialized()
   setup_rzls()
