@@ -174,6 +174,49 @@ local function stop_client_group(names)
   return true
 end
 
+local suppress_roslyn_stop_notice = false
+
+local function start_roslyn_for_buffer(bufnr)
+  local config = vim.lsp.config.roslyn
+  if not config or not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+
+  local path = vim.api.nvim_buf_get_name(bufnr)
+  if path == "" then
+    return
+  end
+
+  local ft = vim.bo[bufnr].filetype
+  if ft ~= "cs" and ft ~= "razor" and ft ~= "cshtml" then
+    return
+  end
+
+  local existing = vim.lsp.get_clients { bufnr = bufnr, name = "roslyn" }
+  if #existing > 0 then
+    return
+  end
+
+  pcall(vim.lsp.start, config, { bufnr = bufnr })
+end
+
+local function refresh_dotnet_buffers()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_is_loaded(buf) then
+      local ft = vim.bo[buf].filetype
+      if ft == "razor" or ft == "cshtml" then
+        vim.api.nvim_exec_autocmds("FileType", {
+          buffer = buf,
+          modeline = false,
+          data = { filetype = ft },
+        })
+      elseif ft == "cs" then
+        start_roslyn_for_buffer(buf)
+      end
+    end
+  end
+end
+
 local function restart_dotnet_lsp(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
 
@@ -183,9 +226,11 @@ local function restart_dotnet_lsp(bufnr)
 
   local path = vim.api.nvim_buf_get_name(bufnr)
   local current_win = vim.api.nvim_get_current_win()
+  suppress_roslyn_stop_notice = true
   local stopped = stop_client_group {
     roslyn = true,
     rzls = true,
+    aftershave = true,
   }
 
   if not stopped and not dotnet_filetypes[vim.bo[bufnr].filetype] then
@@ -193,9 +238,13 @@ local function restart_dotnet_lsp(bufnr)
   end
 
   vim.defer_fn(function()
+    suppress_roslyn_stop_notice = false
     if not vim.api.nvim_buf_is_valid(bufnr) then
       return
     end
+
+    setup_rzls()
+    vim.lsp.enable "roslyn"
 
     if vim.api.nvim_win_is_valid(current_win) then
       pcall(vim.api.nvim_set_current_win, current_win)
@@ -206,6 +255,8 @@ local function restart_dotnet_lsp(bufnr)
     else
       vim.api.nvim_exec_autocmds("BufEnter", { buffer = bufnr })
     end
+
+    refresh_dotnet_buffers()
   end, 100)
 
   return true
@@ -793,6 +844,26 @@ local function override_easy_dotnet_roslyn_filetypes()
   config.filetypes = { "cs", "razor", "cshtml" }
 end
 
+local function override_easy_dotnet_roslyn_on_exit()
+  local config = vim.lsp.config.roslyn
+  if not config or config._user_on_exit_wrapped then
+    return
+  end
+
+  config._user_on_exit_wrapped = true
+  local original = config.on_exit
+
+  config.on_exit = function(code, signal, client_id)
+    if suppress_roslyn_stop_notice and (code == 0 or code == 143) then
+      return
+    end
+
+    if original then
+      return original(code, signal, client_id)
+    end
+  end
+end
+
 local function disable_aftershave_semantic_tokens()
   local group = vim.api.nvim_create_augroup("UserDotnetAftershaveSemanticTokens", { clear = true })
 
@@ -966,6 +1037,7 @@ function M.setup_easy_dotnet()
   override_easy_dotnet_secrets()
   override_easy_dotnet_terminal()
   override_easy_dotnet_roslyn_filetypes()
+  override_easy_dotnet_roslyn_on_exit()
   disable_aftershave_semantic_tokens()
   create_roslyn_commands()
   mark_roslyn_initialized()
