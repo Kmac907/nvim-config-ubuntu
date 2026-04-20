@@ -1005,6 +1005,21 @@ function M.setup_easy_dotnet()
   ensure_dotnet_tools_on_path()
   bridge_easy_dotnet_to_rzls()
 
+  do
+    local ok, current_solution = pcall(require, "easy-dotnet.current_solution")
+    if ok then
+      local bufnr = vim.api.nvim_get_current_buf()
+      local path = vim.api.nvim_buf_get_name(bufnr)
+      if path ~= "" then
+        local selected_solution = current_solution.try_get_selected_solution()
+        local solution = nearest_solution(path, selected_solution)
+        if solution and solution ~= selected_solution then
+          pcall(current_solution.set_solution, solution)
+        end
+      end
+    end
+  end
+
   require("easy-dotnet").setup {
     picker = "telescope",
     managed_terminal = {
