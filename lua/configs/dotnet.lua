@@ -68,6 +68,24 @@ local function lsp_capabilities()
     capabilities = cmp_nvim_lsp.default_capabilities(capabilities)
   end
 
+  capabilities.textDocument = vim.tbl_deep_extend("force", capabilities.textDocument or {}, {
+    codeLens = {
+      dynamicRegistration = true,
+    },
+    diagnostic = {
+      dynamicRegistration = true,
+    },
+    foldingRange = {
+      dynamicRegistration = false,
+      lineFoldingOnly = true,
+    },
+  })
+  capabilities.workspace = vim.tbl_deep_extend("force", capabilities.workspace or {}, {
+    didChangeWatchedFiles = {
+      dynamicRegistration = true,
+    },
+  })
+
   return capabilities
 end
 
@@ -281,7 +299,18 @@ function M.sync_easy_dotnet_solution(bufnr)
 
   local selected_solution = current_solution.try_get_selected_solution()
   local solution = nearest_solution(path, selected_solution)
-  if not solution or solution == selected_solution then
+  if not solution then
+    if selected_solution then
+      local ok_clear = pcall(current_solution.clear_selected_solution)
+      if ok_clear then
+        restart_dotnet_lsp(bufnr)
+      end
+      return ok_clear
+    end
+    return false
+  end
+
+  if solution == selected_solution then
     return false
   end
 
@@ -668,39 +697,48 @@ local function override_easy_dotnet_root_dir()
         binaryPath = debugger_path,
       }
 
-      current_solution.get_or_pick_solution(function(sln_file)
-        local root_dir = active_dotnet_root() or (sln_file and vim.fs.dirname(sln_file)) or vim.fs.normalize(vim.fn.getcwd())
+      local bufnr = vim.api.nvim_get_current_buf()
+      local path = vim.api.nvim_buf_get_name(bufnr)
+      local selected_solution = current_solution.try_get_selected_solution()
+      local sln_file = path ~= "" and nearest_solution(path, selected_solution) or selected_solution
 
-        dotnet_client.create_rpc_call({
-          client = self._client,
-          job = {
-            name = "Initializing...",
-            on_success_text = "Client initialized",
-            on_error_text = "Failed to initialize server",
-          },
-          cb = cb,
-          on_crash = opts.on_crash,
-          method = "initialize",
-          params = {
-            request = {
-              clientInfo = {
-                name = "EasyDotnet",
-                version = "3.0.0",
-                pid = vim.fn.getpid(),
-              },
-              projectInfo = {
-                rootDir = vim.fs.normalize(root_dir),
-                solutionFile = sln_file,
-              },
-              options = {
-                useVisualStudio = use_visual_studio,
-                debuggerOptions = debugger_options,
-                externalTerminal = ext_terminal,
-              },
+      if sln_file and sln_file ~= selected_solution then
+        pcall(current_solution.set_solution, sln_file)
+      elseif not sln_file and path ~= "" then
+        pcall(current_solution.clear_selected_solution)
+      end
+
+      local root_dir = active_dotnet_root() or (sln_file and vim.fs.dirname(sln_file)) or vim.fs.normalize(vim.fn.getcwd())
+
+      dotnet_client.create_rpc_call({
+        client = self._client,
+        job = {
+          name = "Initializing...",
+          on_success_text = "Client initialized",
+          on_error_text = "Failed to initialize server",
+        },
+        cb = cb,
+        on_crash = opts.on_crash,
+        method = "initialize",
+        params = {
+          request = {
+            clientInfo = {
+              name = "EasyDotnet",
+              version = "3.0.0",
+              pid = vim.fn.getpid(),
+            },
+            projectInfo = {
+              rootDir = vim.fs.normalize(root_dir),
+              solutionFile = sln_file,
+            },
+            options = {
+              useVisualStudio = use_visual_studio,
+              debuggerOptions = debugger_options,
+              externalTerminal = ext_terminal,
             },
           },
-        })()
-      end)
+        },
+      })()
     end)()
   end
 end
@@ -841,10 +879,6 @@ local function override_easy_dotnet_roslyn_filetypes()
     return
   end
 
-  -- Let rzls/aftershave own Razor buffers and keep Roslyn on C# files.
-  -- Attaching Roslyn directly to .razor/.cshtml can push those buffers
-  -- through Roslyn's miscellaneous-files project path and trigger
-  -- canonical misc document errors.
   config.filetypes = { "cs" }
 end
 
@@ -949,6 +983,11 @@ function M.setup_roslyn()
     capabilities = lsp_capabilities(),
     on_attach = on_attach,
     settings = {
+      razor = {
+        language_server = {
+          cohosting_enabled = true,
+        },
+      },
       ["csharp|background_analysis"] = {
         dotnet_analyzer_diagnostics_scope = "openFiles",
         dotnet_compiler_diagnostics_scope = "openFiles",
@@ -1015,6 +1054,8 @@ function M.setup_easy_dotnet()
         local solution = nearest_solution(path, selected_solution)
         if solution and solution ~= selected_solution then
           pcall(current_solution.set_solution, solution)
+        elseif not solution then
+          pcall(current_solution.clear_selected_solution)
         end
       end
     end
