@@ -497,7 +497,7 @@ local function terminal_output_line(bufnr)
   end
 
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  for index = #lines, 1, -1 do
+  for index = 1, #lines do
     local line = lines[index]
     if line ~= "" and not line:match "^%[Process exited %d+%]$" then
       return index
