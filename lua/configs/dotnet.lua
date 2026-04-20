@@ -527,6 +527,22 @@ local function focus_terminal_output(winid, bufnr)
   end)
 end
 
+local function leave_terminal_mode(winid)
+  if not winid or not vim.api.nvim_win_is_valid(winid) then
+    return
+  end
+
+  if vim.api.nvim_get_current_win() ~= winid then
+    return
+  end
+
+  if vim.api.nvim_get_mode().mode:sub(1, 1) ~= "t" then
+    return
+  end
+
+  vim.api.nvim_feedkeys(vim.keycode "<C-\\><C-n>", "n", false)
+end
+
 local function override_easy_dotnet_terminal()
   local ok_terminal, terminal = pcall(require, "easy-dotnet.terminal")
   if not ok_terminal or terminal._user_output_wrapped then
@@ -549,7 +565,10 @@ local function override_easy_dotnet_terminal()
     end
 
     if terminal.state.last_status == "finished" then
-      focus_terminal_output(terminal.state.win, terminal.state.buf)
+      leave_terminal_mode(terminal.state.win)
+      vim.defer_fn(function()
+        focus_terminal_output(terminal.state.win, terminal.state.buf)
+      end, 10)
     end
   end
 
@@ -562,7 +581,10 @@ local function override_easy_dotnet_terminal()
       end
 
       vim.schedule(function()
-        focus_terminal_output(state.win, state.buf)
+        leave_terminal_mode(state.win)
+        vim.defer_fn(function()
+          focus_terminal_output(state.win, state.buf)
+        end, 10)
       end)
     end,
   })
