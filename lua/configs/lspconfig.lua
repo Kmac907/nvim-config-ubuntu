@@ -96,7 +96,11 @@ vim.api.nvim_create_autocmd("LspAttach", {
     end
 
     local client = vim.lsp.get_client_by_id(client_id)
-    if client and client.server_capabilities.inlayHintProvider and vim.lsp.inlay_hint then
+    local ft = vim.bo[args.buf].filetype
+    local bufname = vim.api.nvim_buf_get_name(args.buf)
+    local is_razor_buffer = ft == "razor" or ft == "cshtml" or bufname:match "__virtual%."
+
+    if client and client.server_capabilities.inlayHintProvider and vim.lsp.inlay_hint and not is_razor_buffer then
       vim.lsp.inlay_hint.enable(true, { bufnr = args.buf })
     end
   end,

@@ -675,6 +675,29 @@ local function override_easy_dotnet_secrets()
   end
 end
 
+local function override_easy_dotnet_workspace_warning()
+  local ok_logger, logger = pcall(require, "easy-dotnet.logger")
+  if not ok_logger or logger._user_workspace_warning_wrapped then
+    return
+  end
+
+  logger._user_workspace_warning_wrapped = true
+
+  local original_warn = logger.warn
+  logger.warn = function(msg)
+    if msg == "Active file is not part of the workspace. IntelliSense may be limited." then
+      local bufnr = vim.api.nvim_get_current_buf()
+      local ft = vim.bo[bufnr].filetype
+      local name = vim.api.nvim_buf_get_name(bufnr)
+      if ft == "razor" or ft == "cshtml" or name:match "__virtual%." then
+        return
+      end
+    end
+
+    return original_warn(msg)
+  end
+end
+
 local function override_easy_dotnet_root_dir()
   local ok_client, dotnet_client = pcall(require, "easy-dotnet.rpc.dotnet-client")
   if not ok_client or dotnet_client._user_root_wrapped then
@@ -1138,6 +1161,7 @@ function M.setup_easy_dotnet()
   override_easy_dotnet_picker_defaults()
   override_easy_dotnet_diagnostics()
   override_easy_dotnet_secrets()
+  override_easy_dotnet_workspace_warning()
   override_easy_dotnet_terminal()
   override_easy_dotnet_roslyn_root_dir()
   override_easy_dotnet_roslyn_filetypes()
