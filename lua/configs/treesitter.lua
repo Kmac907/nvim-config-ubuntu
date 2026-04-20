@@ -20,6 +20,7 @@ return {
     "markdown_inline",
     "sql",
   },
+  auto_install = true,
   highlight = {
     enable = true,
   },

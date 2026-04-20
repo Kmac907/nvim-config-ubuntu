@@ -120,6 +120,9 @@ return {
     branch = "master",
     build = ":TSUpdate",
     opts = require "configs.treesitter",
+    config = function(_, opts)
+      require("nvim-treesitter.configs").setup(opts)
+    end,
   },
   {
     "nvim-treesitter/nvim-treesitter-textobjects",
