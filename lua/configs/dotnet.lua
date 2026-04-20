@@ -534,7 +534,7 @@ local function leave_terminal_mode(winid)
 
   vim.api.nvim_set_current_win(winid)
   if vim.api.nvim_get_mode().mode:sub(1, 1) == "t" then
-    vim.api.nvim_feedkeys(vim.keycode "<C-\\><C-n>", "n", false)
+    vim.api.nvim_input(vim.keycode "<C-\\><C-n>")
   end
 end
 
