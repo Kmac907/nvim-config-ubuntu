@@ -589,6 +589,25 @@ local function override_easy_dotnet_terminal()
       end)
     end,
   })
+
+  vim.api.nvim_create_autocmd({ "TermEnter", "BufWinEnter" }, {
+    group = vim.api.nvim_create_augroup("UserEasyDotnetTerminalMode", { clear = true }),
+    callback = function(args)
+      local state = terminal.state
+      if args.buf ~= state.buf then
+        return
+      end
+
+      vim.schedule(function()
+        if state.win and vim.api.nvim_win_is_valid(state.win) then
+          leave_terminal_mode(state.win)
+          if state.last_status == "finished" then
+            reveal_terminal_output(state.win, state.buf)
+          end
+        end
+      end)
+    end,
+  })
 end
 
 local function override_easy_dotnet_secrets()
