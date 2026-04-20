@@ -573,6 +573,136 @@ local function override_easy_dotnet_root_dir()
   end
 end
 
+local function terminal_output_lines(bufnr)
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    return {}
+  end
+
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+
+  while #lines > 1 and lines[#lines] == "" and lines[#lines - 1] == "" do
+    table.remove(lines)
+  end
+
+  return lines
+end
+
+local function close_rendered_buffer(state)
+  if not state or not state.rendered_buf or not vim.api.nvim_buf_is_valid(state.rendered_buf) then
+    return
+  end
+
+  pcall(vim.api.nvim_buf_delete, state.rendered_buf, { force = true })
+  state.rendered_buf = nil
+end
+
+local function create_rendered_terminal_buffer(lines)
+  local buf = vim.api.nvim_create_buf(false, true)
+
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].bufhidden = "hide"
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].buflisted = false
+  vim.bo[buf].modifiable = true
+  vim.bo[buf].filetype = "log"
+
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+  vim.bo[buf].modifiable = false
+
+  vim.keymap.set("n", "q", function()
+    local win = vim.fn.bufwinid(buf)
+    if win ~= -1 and vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, false)
+    end
+  end, { buffer = buf, nowait = true, silent = true })
+
+  return buf
+end
+
+local function render_easy_dotnet_terminal_output(state)
+  if not state then
+    return
+  end
+
+  local lines = terminal_output_lines(state.buf)
+  if #lines == 0 then
+    return
+  end
+
+  close_rendered_buffer(state)
+
+  local rendered = create_rendered_terminal_buffer(lines)
+  state.rendered_buf = rendered
+
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    vim.api.nvim_win_set_buf(state.win, rendered)
+    vim.api.nvim_win_set_cursor(state.win, { 1, 0 })
+    vim.fn.win_execute(state.win, "normal! zt")
+    vim.cmd "redraw!"
+  end
+end
+
+local function override_easy_dotnet_terminal()
+  local ok_terminal, terminal = pcall(require, "easy-dotnet.terminal")
+  if not ok_terminal or terminal._user_render_wrapped then
+    return
+  end
+
+  terminal._user_render_wrapped = true
+
+  local state = terminal.state
+  local header = require "easy-dotnet.terminal.header"
+  local original_show = terminal.show
+
+  terminal.show = function()
+    if state.last_status == "finished" and state.rendered_buf and vim.api.nvim_buf_is_valid(state.rendered_buf) then
+      if state.win and vim.api.nvim_win_is_valid(state.win) then
+        vim.api.nvim_set_current_win(state.win)
+      else
+        vim.cmd "split"
+        state.win = vim.api.nvim_get_current_win()
+        vim.w[state.win].easy_dotnet_terminal = true
+
+        vim.api.nvim_create_autocmd("WinClosed", {
+          pattern = tostring(state.win),
+          callback = function()
+            state.win = nil
+            header.cleanup_header()
+          end,
+          once = true,
+        })
+      end
+
+      vim.api.nvim_win_set_buf(state.win, state.rendered_buf)
+      vim.api.nvim_win_set_cursor(state.win, { 1, 0 })
+      vim.fn.win_execute(state.win, "normal! zt")
+      header.create_header_win()
+      header.update_header(state.last_status, state.last_exit_code)
+      vim.cmd "redraw!"
+      return
+    end
+
+    close_rendered_buffer(state)
+    return original_show()
+  end
+
+  local group = vim.api.nvim_create_augroup("UserEasyDotnetTerminalRender", { clear = true })
+
+  vim.api.nvim_create_autocmd("TermClose", {
+    group = group,
+    callback = function(args)
+      if args.buf ~= state.buf then
+        return
+      end
+
+      vim.defer_fn(function()
+        render_easy_dotnet_terminal_output(state)
+      end, 20)
+    end,
+  })
+end
+
 function M.setup_roslyn()
   local config = {
     cmd = roslyn_cmd(),
@@ -637,9 +767,9 @@ function M.setup_easy_dotnet()
 
   require("easy-dotnet").setup {
     picker = "telescope",
-    external_terminal = {
-      command = "x-terminal-emulator",
-      args = { "-e" },
+    managed_terminal = {
+      auto_hide = false,
+      auto_hide_delay = 0,
     },
     lsp = {
       enabled = true,
@@ -669,6 +799,7 @@ function M.setup_easy_dotnet()
   override_easy_dotnet_picker_defaults()
   override_easy_dotnet_diagnostics()
   override_easy_dotnet_secrets()
+  override_easy_dotnet_terminal()
   mark_roslyn_initialized()
   setup_rzls()
 
