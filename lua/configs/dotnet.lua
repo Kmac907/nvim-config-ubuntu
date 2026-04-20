@@ -133,6 +133,84 @@ local function nearest_solution(path, selected_solution)
   return nil
 end
 
+local function solution_targets(path)
+  if path == "" then
+    return {}
+  end
+
+  local results = {}
+  local seen = {}
+  local directory = path:match("%.slnx?$") and vim.fs.dirname(vim.fs.normalize(path)) or vim.fs.dirname(vim.fs.normalize(path))
+
+  while directory do
+    for _, candidate in ipairs(solution_candidates(directory)) do
+      if not seen[candidate] then
+        seen[candidate] = true
+        table.insert(results, candidate)
+      end
+    end
+
+    directory = parent_directory(directory)
+  end
+
+  table.sort(results)
+
+  return results
+end
+
+local function stop_client_group(names)
+  local clients = vim.tbl_filter(function(client)
+    return names[client.name] == true
+  end, vim.lsp.get_clients())
+
+  if #clients == 0 then
+    return false
+  end
+
+  vim.lsp.stop_client(vim.tbl_map(function(client)
+    return client.id
+  end, clients), true)
+
+  return true
+end
+
+local function restart_dotnet_lsp(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return false
+  end
+
+  local path = vim.api.nvim_buf_get_name(bufnr)
+  local current_win = vim.api.nvim_get_current_win()
+  local stopped = stop_client_group {
+    roslyn = true,
+    rzls = true,
+  }
+
+  if not stopped and not dotnet_filetypes[vim.bo[bufnr].filetype] then
+    return false
+  end
+
+  vim.defer_fn(function()
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+      return
+    end
+
+    if vim.api.nvim_win_is_valid(current_win) then
+      pcall(vim.api.nvim_set_current_win, current_win)
+    end
+
+    if path ~= "" and vim.uv.fs_stat(path) then
+      vim.cmd "silent! edit"
+    else
+      vim.api.nvim_exec_autocmds("BufEnter", { buffer = bufnr })
+    end
+  end, 100)
+
+  return true
+end
+
 function M.sync_easy_dotnet_solution(bufnr)
   local ok, current_solution = pcall(require, "easy-dotnet.current_solution")
   if not ok then
@@ -157,6 +235,9 @@ function M.sync_easy_dotnet_solution(bufnr)
   end
 
   local ok_set = pcall(current_solution.set_solution, solution)
+  if ok_set then
+    restart_dotnet_lsp(bufnr)
+  end
   return ok_set
 end
 
@@ -703,6 +784,68 @@ local function override_easy_dotnet_terminal()
   })
 end
 
+local function override_easy_dotnet_roslyn_filetypes()
+  local config = vim.lsp.config.roslyn
+  if not config then
+    return
+  end
+
+  config.filetypes = { "cs", "razor", "cshtml" }
+end
+
+local function create_roslyn_commands()
+  if vim.g.user_dotnet_roslyn_command_created then
+    return
+  end
+
+  vim.g.user_dotnet_roslyn_command_created = true
+
+  vim.api.nvim_create_user_command("Roslyn", function(opts)
+    local subcommand = opts.fargs[1]
+
+    if subcommand == "target" then
+      local path = vim.api.nvim_buf_get_name(0)
+      local targets = solution_targets(path)
+
+      if #targets == 0 then
+        vim.notify("No .sln or .slnx files found for this buffer", vim.log.levels.WARN)
+        return
+      end
+
+      vim.ui.select(targets, {
+        prompt = "Select target solution: ",
+        format_item = function(item)
+          return vim.fn.fnamemodify(item, ":.")
+        end,
+      }, function(choice)
+        if not choice then
+          return
+        end
+
+        require("easy-dotnet.current_solution").set_solution(choice)
+        restart_dotnet_lsp()
+        vim.notify("Selected solution: " .. vim.fs.basename(choice), vim.log.levels.INFO)
+      end)
+      return
+    end
+
+    if subcommand == "restart" then
+      restart_dotnet_lsp()
+      return
+    end
+
+    vim.notify("Roslyn: expected `target` or `restart`", vim.log.levels.ERROR)
+  end, {
+    nargs = 1,
+    desc = "Interact with the C# Roslyn workspace",
+    complete = function(arg_lead)
+      return vim.tbl_filter(function(item)
+        return item:find(arg_lead, 1, true) == 1
+      end, { "target", "restart" })
+    end,
+  })
+end
+
 function M.setup_roslyn()
   local config = {
     cmd = roslyn_cmd(),
@@ -800,6 +943,8 @@ function M.setup_easy_dotnet()
   override_easy_dotnet_diagnostics()
   override_easy_dotnet_secrets()
   override_easy_dotnet_terminal()
+  override_easy_dotnet_roslyn_filetypes()
+  create_roslyn_commands()
   mark_roslyn_initialized()
   setup_rzls()
 

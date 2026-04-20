@@ -80,6 +80,14 @@ return {
     "GustavEikaas/easy-dotnet.nvim",
     cmd = { "Dotnet" },
     ft = { "cs", "csproj", "fsproj", "sln", "slnx", "razor", "cshtml", "props" },
+    init = function()
+      vim.filetype.add {
+        extension = {
+          razor = "razor",
+          cshtml = "razor",
+        },
+      }
+    end,
     dependencies = {
       "nvim-lua/plenary.nvim",
       "nvim-telescope/telescope.nvim",
