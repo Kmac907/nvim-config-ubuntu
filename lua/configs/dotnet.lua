@@ -491,6 +491,29 @@ local function override_easy_dotnet_picker_defaults()
   end
 end
 
+local function override_easy_dotnet_secrets()
+  local ok_secrets, secrets = pcall(require, "easy-dotnet.secrets")
+  if not ok_secrets or secrets._user_recursive_wrapped then
+    return
+  end
+
+  secrets._user_recursive_wrapped = true
+
+  local original = secrets.edit_secrets_picker
+  secrets.edit_secrets_picker = function(get_secret_path)
+    local function ensure_secret_path(secret_id)
+      local path = get_secret_path(secret_id)
+      local parent = path and vim.fs.dirname(path) or nil
+      if parent and parent ~= "" then
+        vim.fn.mkdir(parent, "p")
+      end
+      return path
+    end
+
+    return original(ensure_secret_path)
+  end
+end
+
 local function override_easy_dotnet_root_dir()
   local ok_client, dotnet_client = pcall(require, "easy-dotnet.rpc.dotnet-client")
   if not ok_client or dotnet_client._user_root_wrapped then
@@ -641,6 +664,7 @@ function M.setup_easy_dotnet()
   override_easy_dotnet_root_dir()
   override_easy_dotnet_picker_defaults()
   override_easy_dotnet_diagnostics()
+  override_easy_dotnet_secrets()
   mark_roslyn_initialized()
   setup_rzls()
 
