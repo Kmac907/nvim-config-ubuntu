@@ -214,6 +214,86 @@ local function setup_rzls()
   end
 end
 
+local function nearest_project(path)
+  if path == "" then
+    return nil
+  end
+
+  local directory = vim.fs.dirname(vim.fs.normalize(path))
+  local matches = vim.fs.find(function(name)
+    return name:match("%.csproj$") or name:match("%.fsproj$")
+  end, {
+    path = directory,
+    upward = true,
+    limit = 1,
+  })
+
+  return matches[1]
+end
+
+local function diagnostic_include_warnings(severity_filter)
+  if not severity_filter then
+    severity_filter = require("easy-dotnet.options").options.diagnostics.default_severity
+  end
+
+  return severity_filter ~= "error"
+end
+
+local function diagnostic_filter()
+  return function(filename)
+    return (filename:match "%.cs$" or filename:match "%.fs$") and not filename:match "/obj/" and not filename:match "/bin/"
+  end
+end
+
+local function selected_diagnostic_target(bufnr)
+  local ok, current_solution = pcall(require, "easy-dotnet.current_solution")
+  if ok then
+    local selected = current_solution.try_get_selected_solution()
+    if selected then
+      return selected
+    end
+  end
+
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  local path = vim.api.nvim_buf_get_name(bufnr)
+
+  local solution = nearest_solution(path)
+  if solution then
+    return solution
+  end
+
+  return nearest_project(path)
+end
+
+local function override_easy_dotnet_diagnostics()
+  local ok_actions, actions = pcall(require, "easy-dotnet.actions.diagnostics")
+  if not ok_actions then
+    return
+  end
+
+  local original = actions.get_workspace_diagnostics
+
+  actions.get_workspace_diagnostics = function(severity_filter)
+    local target = selected_diagnostic_target()
+    if not target then
+      return original(severity_filter)
+    end
+
+    local rpc = require "easy-dotnet.rpc.rpc"
+    local diagnostics = require "easy-dotnet.diagnostics"
+
+    rpc.global_rpc_client:initialize(function()
+      rpc.global_rpc_client.roslyn:get_workspace_diagnostics(
+        target,
+        diagnostic_include_warnings(severity_filter),
+        function(response)
+          diagnostics.populate_diagnostics(response, diagnostic_filter())
+        end
+      )
+    end)
+  end
+end
+
 function M.setup_roslyn()
   local config = {
     cmd = roslyn_cmd(),
@@ -294,6 +374,8 @@ function M.setup_easy_dotnet()
       },
     },
   }
+
+  override_easy_dotnet_diagnostics()
 
   local group = vim.api.nvim_create_augroup("UserEasyDotnetSolution", { clear = true })
 
