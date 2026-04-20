@@ -214,6 +214,75 @@ local function setup_rzls()
   end
 end
 
+local function easy_dotnet_lsp_settings()
+  return {
+    ["csharp|background_analysis"] = {
+      dotnet_analyzer_diagnostics_scope = "fullSolution",
+      dotnet_compiler_diagnostics_scope = "fullSolution",
+    },
+    ["csharp|code_lens"] = {
+      dotnet_enable_references_code_lens = true,
+      dotnet_enable_tests_code_lens = true,
+    },
+    ["csharp|completion"] = {
+      dotnet_provide_regex_completions = true,
+      dotnet_show_completion_items_from_unimported_namespaces = true,
+      dotnet_show_name_completion_suggestions = true,
+    },
+    ["csharp|formatting"] = {
+      dotnet_organize_imports_on_format = true,
+    },
+    ["csharp|inlay_hints"] = {
+      csharp_enable_inlay_hints_for_implicit_object_creation = true,
+      csharp_enable_inlay_hints_for_implicit_variable_types = true,
+      csharp_enable_inlay_hints_for_lambda_parameter_types = true,
+      csharp_enable_inlay_hints_for_types = true,
+      dotnet_enable_inlay_hints_for_indexer_parameters = true,
+      dotnet_enable_inlay_hints_for_literal_parameters = true,
+      dotnet_enable_inlay_hints_for_object_creation_parameters = true,
+      dotnet_enable_inlay_hints_for_other_parameters = true,
+      dotnet_enable_inlay_hints_for_parameters = true,
+      dotnet_suppress_inlay_hints_for_parameters_that_differ_only_by_suffix = true,
+      dotnet_suppress_inlay_hints_for_parameters_that_match_argument_name = true,
+      dotnet_suppress_inlay_hints_for_parameters_that_match_method_intent = true,
+    },
+    ["csharp|symbol_search"] = {
+      dotnet_search_reference_assemblies = true,
+    },
+  }
+end
+
+local function bridge_easy_dotnet_to_rzls()
+  local ok_constants, constants = pcall(require, "easy-dotnet.constants")
+  if ok_constants then
+    constants.lsp_client_name = "roslyn"
+  end
+
+  local ok_razor, razor = pcall(require, "rzls.razor")
+  if ok_razor then
+    razor.lsp_names[razor.language_kinds.csharp] = "roslyn"
+  end
+end
+
+local function mark_roslyn_initialized()
+  local config = vim.lsp.config.roslyn
+  if not config or not config.handlers then
+    return
+  end
+
+  local original = config.handlers["workspace/projectInitializationComplete"]
+  if not original or config.handlers._user_roslyn_ready_wrapped then
+    return
+  end
+
+  config.handlers._user_roslyn_ready_wrapped = true
+  config.handlers["workspace/projectInitializationComplete"] = function(err, result, ctx, handler_config)
+    _G.roslyn_initialized = true
+    vim.api.nvim_exec_autocmds("User", { pattern = "RoslynInitialized" })
+    return original(err, result, ctx, handler_config)
+  end
+end
+
 local function nearest_project(path)
   if path == "" then
     return nil
@@ -294,6 +363,193 @@ local function override_easy_dotnet_diagnostics()
   end
 end
 
+local function default_task_from_prompt(prompt)
+  if type(prompt) ~= "string" then
+    return nil
+  end
+
+  local lower = prompt:lower()
+
+  if lower:match "pick project to build" then
+    return "build"
+  end
+
+  if lower:match "pick project to run" then
+    return "run"
+  end
+
+  if lower:match "pick project to test" then
+    return "test"
+  end
+
+  if lower:match "pick test project" then
+    return "test"
+  end
+
+  if lower:match "pick project to watch" then
+    return "watch"
+  end
+
+  if lower:match "pick project to view" then
+    return "view"
+  end
+
+  return nil
+end
+
+local function persisted_default_project_name(solution, task_type)
+  local ok_default, default_manager = pcall(require, "easy-dotnet.default-manager")
+  if not ok_default or not solution or not task_type then
+    return nil
+  end
+
+  local cache_file = default_manager.try_get_cache_file(solution)
+  if not cache_file or vim.fn.filereadable(cache_file) ~= 1 then
+    return nil
+  end
+
+  local ok_read, lines = pcall(vim.fn.readfile, cache_file)
+  if not ok_read then
+    return nil
+  end
+
+  local ok_decode, decoded = pcall(vim.fn.json_decode, table.concat(lines, "\n"))
+  if not ok_decode or type(decoded) ~= "table" then
+    return nil
+  end
+
+  local key = string.format("default_%s_project", task_type)
+  local persisted = decoded[key]
+
+  if type(persisted) == "string" then
+    return persisted ~= "Solution" and persisted or nil
+  end
+
+  if type(persisted) == "table" and persisted.type == "project" then
+    return persisted.project
+  end
+
+  return nil
+end
+
+local function default_picker_choice(items, prompt)
+  local task_type = default_task_from_prompt(prompt)
+  if not task_type then
+    return nil
+  end
+
+  local ok_solution, current_solution = pcall(require, "easy-dotnet.current_solution")
+  if not ok_solution then
+    return nil
+  end
+
+  local project_name = persisted_default_project_name(current_solution.try_get_selected_solution(), task_type)
+  if not project_name then
+    return nil
+  end
+
+  for _, item in ipairs(items or {}) do
+    if type(item) == "table" and type(item.display) == "string" then
+      if item.display == project_name or item.display:match("^" .. vim.pesc(project_name) .. "%s*%(") then
+        return item
+      end
+    end
+  end
+
+  return nil
+end
+
+local function override_easy_dotnet_picker_defaults()
+  local ok_picker, picker = pcall(require, "easy-dotnet.picker")
+  if not ok_picker or picker._user_default_wrapped then
+    return
+  end
+
+  picker._user_default_wrapped = true
+
+  local original_picker = picker.picker
+  local original_preview_picker = picker.preview_picker
+
+  picker.picker = function(_, items, on_choice, prompt, ...)
+    local choice = default_picker_choice(items, prompt)
+    if choice then
+      on_choice(choice)
+      return
+    end
+
+    return original_picker(_, items, on_choice, prompt, ...)
+  end
+
+  picker.preview_picker = function(_, items, on_choice, prompt, ...)
+    local choice = default_picker_choice(items, prompt)
+    if choice then
+      on_choice(choice)
+      return
+    end
+
+    return original_preview_picker(_, items, on_choice, prompt, ...)
+  end
+end
+
+local function override_easy_dotnet_root_dir()
+  local ok_client, dotnet_client = pcall(require, "easy-dotnet.rpc.dotnet-client")
+  if not ok_client or dotnet_client._user_root_wrapped then
+    return
+  end
+
+  dotnet_client._user_root_wrapped = true
+
+  function dotnet_client:_initialize(cb, opts)
+    opts = opts or {}
+
+    coroutine.wrap(function()
+      local current_solution = require "easy-dotnet.current_solution"
+      local use_visual_studio = require("easy-dotnet.options").options.server.use_visual_studio == true
+      local debugger_path = require("easy-dotnet.options").options.debugger.bin_path
+      local ext_terminal = require("easy-dotnet.options").options.external_terminal
+      local apply_value_converters = require("easy-dotnet.options").options.debugger.apply_value_converters
+      local debugger_options = {
+        applyValueConverters = apply_value_converters,
+        binaryPath = debugger_path,
+      }
+
+      current_solution.get_or_pick_solution(function(sln_file)
+        local root_dir = active_dotnet_root() or (sln_file and vim.fs.dirname(sln_file)) or vim.fs.normalize(vim.fn.getcwd())
+
+        dotnet_client.create_rpc_call({
+          client = self._client,
+          job = {
+            name = "Initializing...",
+            on_success_text = "Client initialized",
+            on_error_text = "Failed to initialize server",
+          },
+          cb = cb,
+          on_crash = opts.on_crash,
+          method = "initialize",
+          params = {
+            request = {
+              clientInfo = {
+                name = "EasyDotnet",
+                version = "3.0.0",
+                pid = vim.fn.getpid(),
+              },
+              projectInfo = {
+                rootDir = vim.fs.normalize(root_dir),
+                solutionFile = sln_file,
+              },
+              options = {
+                useVisualStudio = use_visual_studio,
+                debuggerOptions = debugger_options,
+                externalTerminal = ext_terminal,
+              },
+            },
+          },
+        })()
+      end)
+    end)()
+  end
+end
+
 function M.setup_roslyn()
   local config = {
     cmd = roslyn_cmd(),
@@ -354,11 +610,18 @@ end
 
 function M.setup_easy_dotnet()
   ensure_dotnet_tools_on_path()
+  bridge_easy_dotnet_to_rzls()
 
   require("easy-dotnet").setup {
     picker = "telescope",
     lsp = {
-      enabled = false,
+      enabled = true,
+      preload_roslyn = true,
+      roslynator_enabled = true,
+      easy_dotnet_analyzer_enabled = true,
+      config = {
+        settings = easy_dotnet_lsp_settings(),
+      },
     },
     debugger = {
       auto_register_dap = false,
@@ -375,7 +638,11 @@ function M.setup_easy_dotnet()
     },
   }
 
+  override_easy_dotnet_root_dir()
+  override_easy_dotnet_picker_defaults()
   override_easy_dotnet_diagnostics()
+  mark_roslyn_initialized()
+  setup_rzls()
 
   local group = vim.api.nvim_create_augroup("UserEasyDotnetSolution", { clear = true })
 

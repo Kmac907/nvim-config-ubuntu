@@ -77,26 +77,6 @@ return {
     end,
   },
   {
-    "seblyng/roslyn.nvim",
-    ft = { "cs", "razor", "cshtml" },
-    dependencies = {
-      "neovim/nvim-lspconfig",
-      "williamboman/mason.nvim",
-      "tris203/rzls.nvim",
-    },
-    init = function()
-      vim.filetype.add {
-        extension = {
-          razor = "razor",
-          cshtml = "razor",
-        },
-      }
-    end,
-    config = function()
-      require("configs.dotnet").setup_roslyn()
-    end,
-  },
-  {
     "GustavEikaas/easy-dotnet.nvim",
     cmd = { "Dotnet" },
     ft = { "cs", "csproj", "fsproj", "sln", "slnx", "razor", "cshtml", "props" },
@@ -104,6 +84,7 @@ return {
       "nvim-lua/plenary.nvim",
       "nvim-telescope/telescope.nvim",
       "mfussenegger/nvim-dap",
+      "tris203/rzls.nvim",
     },
     config = function()
       require("configs.dotnet").setup_easy_dotnet()

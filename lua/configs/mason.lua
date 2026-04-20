@@ -18,7 +18,6 @@ M.ensure_installed = {
   "golangci-lint",
   "html-lsp",
   "delve",
-  "roslyn-unstable",
   "rzls",
   "csharpier",
   "netcoredbg",
