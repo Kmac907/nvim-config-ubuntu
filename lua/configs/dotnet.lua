@@ -517,8 +517,14 @@ local function focus_terminal_output(winid, bufnr)
     return
   end
 
-  vim.api.nvim_win_set_cursor(winid, { line, 0 })
-  vim.api.nvim_win_set_cursor(winid, { line, 0 })
+  vim.api.nvim_win_call(winid, function()
+    vim.fn.winrestview {
+      lnum = line,
+      col = 0,
+      curswant = 0,
+      topline = line,
+    }
+  end)
 end
 
 local function override_easy_dotnet_terminal()
