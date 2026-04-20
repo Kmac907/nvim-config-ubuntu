@@ -525,6 +525,7 @@ local function focus_terminal_output(winid, bufnr)
     curswant = 0,
     topline = line,
   }
+  vim.cmd "redraw!"
 end
 
 local function leave_terminal_mode(winid)
@@ -547,6 +548,12 @@ local function reveal_terminal_output(winid, bufnr)
   leave_terminal_mode(winid)
   vim.defer_fn(function()
     focus_terminal_output(winid, bufnr)
+    vim.defer_fn(function()
+      if winid and vim.api.nvim_win_is_valid(winid) then
+        vim.api.nvim_set_current_win(winid)
+        vim.cmd "redraw!"
+      end
+    end, 10)
   end, 20)
 end
 
