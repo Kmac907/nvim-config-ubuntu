@@ -517,14 +517,14 @@ local function focus_terminal_output(winid, bufnr)
     return
   end
 
-  vim.api.nvim_win_call(winid, function()
-    vim.fn.winrestview {
-      lnum = line,
-      col = 0,
-      curswant = 0,
-      topline = line,
-    }
-  end)
+  vim.api.nvim_set_current_win(winid)
+  vim.api.nvim_win_set_cursor(winid, { line, 0 })
+  vim.fn.winrestview {
+    lnum = line,
+    col = 0,
+    curswant = 0,
+    topline = line,
+  }
 end
 
 local function leave_terminal_mode(winid)
