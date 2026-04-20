@@ -206,14 +206,12 @@ local function refresh_dotnet_buffers()
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_is_loaded(buf) then
       local ft = vim.bo[buf].filetype
-      if ft == "razor" or ft == "cshtml" then
+      if ft == "razor" or ft == "cshtml" or ft == "cs" then
         vim.api.nvim_exec_autocmds("FileType", {
           buffer = buf,
           modeline = false,
           data = { filetype = ft },
         })
-      elseif ft == "cs" then
-        start_roslyn_for_buffer(buf)
       end
     end
   end
@@ -351,8 +349,8 @@ end
 local function easy_dotnet_lsp_settings()
   return {
     ["csharp|background_analysis"] = {
-      dotnet_analyzer_diagnostics_scope = "fullSolution",
-      dotnet_compiler_diagnostics_scope = "fullSolution",
+      dotnet_analyzer_diagnostics_scope = "openFiles",
+      dotnet_compiler_diagnostics_scope = "openFiles",
     },
     ["csharp|code_lens"] = {
       dotnet_enable_references_code_lens = true,
@@ -843,7 +841,11 @@ local function override_easy_dotnet_roslyn_filetypes()
     return
   end
 
-  config.filetypes = { "cs", "razor", "cshtml" }
+  -- Let rzls/aftershave own Razor buffers and keep Roslyn on C# files.
+  -- Attaching Roslyn directly to .razor/.cshtml can push those buffers
+  -- through Roslyn's miscellaneous-files project path and trigger
+  -- canonical misc document errors.
+  config.filetypes = { "cs" }
 end
 
 local function override_easy_dotnet_roslyn_on_exit()
@@ -948,8 +950,8 @@ function M.setup_roslyn()
     on_attach = on_attach,
     settings = {
       ["csharp|background_analysis"] = {
-        dotnet_analyzer_diagnostics_scope = "fullSolution",
-        dotnet_compiler_diagnostics_scope = "fullSolution",
+        dotnet_analyzer_diagnostics_scope = "openFiles",
+        dotnet_compiler_diagnostics_scope = "openFiles",
       },
       ["csharp|code_lens"] = {
         dotnet_enable_references_code_lens = true,
